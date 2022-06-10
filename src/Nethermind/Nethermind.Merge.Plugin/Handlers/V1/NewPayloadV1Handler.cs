@@ -159,6 +159,12 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return NewPayloadV1Result.Invalid(Keccak.Zero);
             }
 
+            if (_poSSwitcher.IsPostMerge(block.Header) && _poSSwitcher.HasInvalidTerminalBlock(out string? invalidTerminalMessage))
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid terminal block. {invalidTerminalMessage}. Request: {requestStr}.");
+                return NewPayloadV1Result.Invalid(Keccak.Zero, invalidTerminalMessage);
+            }
+
             // Otherwise, we can just process this block and we don't need to do BeaconSync anymore.
             _mergeSyncController.StopSyncing();
             

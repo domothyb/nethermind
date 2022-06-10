@@ -17,6 +17,7 @@
 
 using System;
 using System.IO;
+using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -33,6 +34,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -195,10 +197,35 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.AreEqual(true, newPoSSwitcher.HasEverReachedTerminalBlock());
         }
 
-        private static PoSSwitcher CreatePosSwitcher(IBlockTree blockTree, IDb? db = null, ISpecProvider? specProvider = null)
+        [Test]
+        public void OnInvalidTerminalBlock_setInvalidTerminalError_andResetWhenReached_validTerminal()
+        {
+            Block genesisBlock = Build.A.Block.WithNumber(0).TestObject;
+            BlockHeader badBlock = Build.A.BlockHeader.TestObject;
+            BlockTree blockTree = Build.A.BlockTree(genesisBlock).OfChainLength(4).TestObject;
+            Block goodTerminal = Build.A.Block.WithParent(blockTree.Head).TestObject;
+            MergeConfig mergeConfig = new() { TerminalBlockNumber = 4, };
+            TestSpecProvider newSpecProvider = new(London.Instance);
+            newSpecProvider.TerminalTotalDifficulty = 5000000L;
+            
+            PoSSwitcher poSSwitcher = CreatePosSwitcher(blockTree, specProvider: newSpecProvider, mergeConfig: mergeConfig);
+            
+            poSSwitcher.OnInvalidTerminalBlock(badBlock, "Test invalid terminal");
+            poSSwitcher.HasInvalidTerminalBlock(out String message).Should().BeTrue();
+
+            blockTree.SuggestBlock(goodTerminal);
+            blockTree.UpdateMainChain(goodTerminal);
+            
+            poSSwitcher.HasInvalidTerminalBlock(out message).Should().BeFalse();
+        }
+
+        private static PoSSwitcher CreatePosSwitcher(IBlockTree blockTree, IDb? db = null, ISpecProvider? specProvider = null, IMergeConfig? mergeConfig = null)
         {
             db ??= new MemDb();
-            MergeConfig? mergeConfig = new() {Enabled = true};
+            if (mergeConfig == null)
+            {
+                mergeConfig = new MergeConfig {Enabled = true};
+            }
             return new PoSSwitcher(mergeConfig, new SyncConfig(), db, blockTree, specProvider ?? MainnetSpecProvider.Instance, LimboLogs.Instance);
         }
     }

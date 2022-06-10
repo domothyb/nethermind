@@ -54,4 +54,13 @@ public class NoPoS : IPoSSwitcher
         (false, false);
 
     public bool IsPostMerge(BlockHeader header) => false;
+    public void OnInvalidTerminalBlock(BlockHeader header, string? errorMessage)
+    {
+    }
+
+    public bool HasInvalidTerminalBlock(out string? errorMessage)
+    {
+        errorMessage = null;
+        return false;
+    }
 }

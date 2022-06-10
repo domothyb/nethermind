@@ -58,6 +58,10 @@ namespace Nethermind.Consensus
         (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header);
         
         bool IsPostMerge(BlockHeader header);
+        
+        void OnInvalidTerminalBlock(BlockHeader header, string? errorMessage);
+
+        bool HasInvalidTerminalBlock(out string? errorMessage);
     }
 
     public static class PoSSwitcherExtensions

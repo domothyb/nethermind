@@ -87,6 +87,13 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
             
             Block? newHeadBlock = GetBlock(forkchoiceState.HeadBlockHash);
+            
+            if ((newHeadBlock == null || _poSSwitcher.IsPostMerge(newHeadBlock.Header)) && _poSSwitcher.HasInvalidTerminalBlock(out string? invalidTerminalMessage))
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid terminal block. {invalidTerminalMessage}. Request: {requestStr}.");
+                return ForkchoiceUpdatedV1Result.Invalid(Keccak.Zero, invalidTerminalMessage);
+            }
+
             if (newHeadBlock is null) // if a head is unknown we are syncing
             {
                 if (_blockCacheService.BlockCache.TryGetValue(forkchoiceState.HeadBlockHash, out Block? block))
@@ -108,7 +115,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
                 return ForkchoiceUpdatedV1Result.Syncing;
             }
-
+            
             if (!_blockTree.WasProcessed(newHeadBlock.Number, newHeadBlock.GetOrCalculateHash()))
             {
                 int processingQueueCount = _processingQueue.Count;

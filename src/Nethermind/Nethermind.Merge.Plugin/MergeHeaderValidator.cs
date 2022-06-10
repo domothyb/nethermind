@@ -35,6 +35,7 @@ namespace Nethermind.Merge.Plugin
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly IHeaderValidator _preMergeHeaderValidator;
         private readonly IBlockTree _blockTree;
+        private readonly IMergeConfig _mergeConfig;
 
         public MergeHeaderValidator(
             IPoSSwitcher poSSwitcher,
@@ -42,12 +43,14 @@ namespace Nethermind.Merge.Plugin
             IBlockTree blockTree,
             ISpecProvider specProvider,
             ISealValidator sealValidator,
+            IMergeConfig mergeConfig,
             ILogManager logManager)
             : base(blockTree, sealValidator, specProvider, logManager)
         {
             _poSSwitcher = poSSwitcher;
             _preMergeHeaderValidator = preMergeHeaderValidator;
             _blockTree = blockTree;
+            _mergeConfig = mergeConfig;
         }
         
         public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
@@ -67,7 +70,14 @@ namespace Nethermind.Merge.Plugin
         {
             bool validDifficulty = true, validNonce = true, validUncles = true;
             (bool IsTerminal, bool IsPostMerge) switchInfo = _poSSwitcher.GetBlockConsensusInfo(header);
+
+            bool validTerminalHash = true;
+            if (switchInfo.IsTerminal)
+            {
+                 validTerminalHash = ValidateTerminalHashCheck(header);
+            }
             bool terminalTotalDifficultyChecks = ValidateTerminalTotalDifficultyChecks(header, switchInfo.IsTerminal);
+            
             if (switchInfo.IsPostMerge)
             {
                 validDifficulty = ValidateHeaderField(header, header.Difficulty, UInt256.Zero, nameof(header.Difficulty));
@@ -75,12 +85,42 @@ namespace Nethermind.Merge.Plugin
                 validUncles = ValidateHeaderField(header, header.UnclesHash, Keccak.OfAnEmptySequenceRlp, nameof(header.UnclesHash));
             }
 
-            return terminalTotalDifficultyChecks
+            bool valid = terminalTotalDifficultyChecks
+                   && validTerminalHash
                    && validDifficulty
                    && validNonce
                    && validUncles;
+
+            if (switchInfo.IsTerminal && !valid)
+            {
+                string message = $"Invalid block header {header.ToString(BlockHeader.Format.Short)}";
+                if (!validTerminalHash)
+                {
+                    message +=
+                        $" - hash mismatch, configured terminal hash: {_mergeConfig.TerminalBlockHash}";
+                }
+
+                if (!terminalTotalDifficultyChecks)
+                {
+                    message +=
+                        $" - total difficulty is incorrect because of TTD, TerminalTotalDifficulty: {_poSSwitcher.TerminalTotalDifficulty}";
+                }
+                _poSSwitcher.OnInvalidTerminalBlock(header, message);
+            }
+
+            return valid;
         }
-        
+
+        private bool ValidateTerminalHashCheck(BlockHeader header)
+        {
+            if (_mergeConfig.TerminalBlockHash == null)
+            {
+                return true;
+            }
+            
+            return ValidateHeaderField(header, header.Hash, _mergeConfig.TerminalBlockHashParsed, "terminal block hash");
+        }
+
         protected override bool ValidateExtraData(BlockHeader header, BlockHeader? parent, IReleaseSpec spec, bool isUncle = false)
         {
             if (_poSSwitcher.IsPostMerge(header))
