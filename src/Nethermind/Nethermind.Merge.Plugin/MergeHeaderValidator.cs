@@ -55,9 +55,18 @@ namespace Nethermind.Merge.Plugin
         
         public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
         {
-            return _poSSwitcher.IsPostMerge(header)
-                ? ValidateTheMergeChecks(header) && base.Validate(header, parent, isUncle)
-                : _preMergeHeaderValidator.Validate(header, parent, isUncle);
+            (bool IsTerminal, bool IsPostMerge) switchInfo = _poSSwitcher.GetBlockConsensusInfo(header);
+            if (switchInfo.IsPostMerge)
+            {
+                return ValidateTheMergeChecks(header) && base.Validate(header, parent, isUncle);
+            }
+            
+            if (switchInfo.IsTerminal)
+            {
+                 return ValidateTerminalBlock(header) && base.Validate(header, parent, isUncle);
+            }
+            
+            return _preMergeHeaderValidator.Validate(header, parent, isUncle);
         }
 
         public override bool Validate(BlockHeader header, bool isUncle = false) => 
@@ -71,11 +80,6 @@ namespace Nethermind.Merge.Plugin
             bool validDifficulty = true, validNonce = true, validUncles = true;
             (bool IsTerminal, bool IsPostMerge) switchInfo = _poSSwitcher.GetBlockConsensusInfo(header);
 
-            bool validTerminalHash = true;
-            if (switchInfo.IsTerminal)
-            {
-                 validTerminalHash = ValidateTerminalHashCheck(header);
-            }
             bool terminalTotalDifficultyChecks = ValidateTerminalTotalDifficultyChecks(header, switchInfo.IsTerminal);
             
             if (switchInfo.IsPostMerge)
@@ -86,15 +90,23 @@ namespace Nethermind.Merge.Plugin
             }
 
             bool valid = terminalTotalDifficultyChecks
-                   && validTerminalHash
                    && validDifficulty
                    && validNonce
                    && validUncles;
 
-            if (switchInfo.IsTerminal && !valid)
+            return valid;
+        }
+
+        private bool ValidateTerminalBlock(BlockHeader header)
+        {
+            bool terminalTotalDifficultyChecks = ValidateTerminalTotalDifficultyChecks(header, true);
+            bool hashMatch = ValidateHeaderField(header, header.Hash, _mergeConfig.TerminalBlockHashParsed, "terminal block hash");
+
+            bool valid = hashMatch && terminalTotalDifficultyChecks;
+            if (!valid)
             {
                 string message = $"Invalid block header {header.ToString(BlockHeader.Format.Short)}";
-                if (!validTerminalHash)
+                if (!hashMatch)
                 {
                     message +=
                         $" - hash mismatch, configured terminal hash: {_mergeConfig.TerminalBlockHash}";
@@ -109,16 +121,6 @@ namespace Nethermind.Merge.Plugin
             }
 
             return valid;
-        }
-
-        private bool ValidateTerminalHashCheck(BlockHeader header)
-        {
-            if (_mergeConfig.TerminalBlockHash == null)
-            {
-                return true;
-            }
-            
-            return ValidateHeaderField(header, header.Hash, _mergeConfig.TerminalBlockHashParsed, "terminal block hash");
         }
 
         protected override bool ValidateExtraData(BlockHeader header, BlockHeader? parent, IReleaseSpec spec, bool isUncle = false)

@@ -19,6 +19,7 @@ using DotNetty.Codecs;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -35,6 +36,7 @@ namespace Nethermind.Merge.Plugin.Test;
 public class MergeHeaderValidatorTest
 {
     private IPoSSwitcher _poSSwitcher;
+    private IHeaderValidator _baseValidator;
     private IBlockTree _blockTree;
     private ISealValidator _sealValidator;
     private ISpecProvider _specProvider;
@@ -48,12 +50,14 @@ public class MergeHeaderValidatorTest
         _sealValidator = NullSealEngine.Instance;
         _mergeConfig = Substitute.For<IMergeConfig>();
         _specProvider = MainnetSpecProvider.Instance;
+        _baseValidator = Substitute.For<IHeaderValidator>();
     }
 
     private MergeHeaderValidator CreateValidator()
     {
         return new MergeHeaderValidator(
             _poSSwitcher,
+            _baseValidator,
             _blockTree,
             _specProvider,
             _sealValidator,
@@ -69,6 +73,7 @@ public class MergeHeaderValidatorTest
         
         GivenNextBlockIsTerminal();
         GivenConfiguredTerminalBlockHash(Keccak.Compute("something else"));
+        GivenBaseValidatorAlwaysPass();
         mergeHeaderValidator.Validate(blockHeader)
             .Should()
             .BeFalse();
@@ -83,6 +88,7 @@ public class MergeHeaderValidatorTest
         
         GivenNextBlockIsTerminal();
         GivenConfiguredTerminalBlockHash(blockHeader.Hash);
+        GivenBaseValidatorAlwaysPass();
         mergeHeaderValidator.Validate(blockHeader)
             .Should()
             .BeTrue();
@@ -90,6 +96,8 @@ public class MergeHeaderValidatorTest
 
     private void GivenNextBlockIsTerminal()
     {
+        _poSSwitcher.IsPostMerge(Arg.Any<BlockHeader>())
+            .Returns(false);
         _poSSwitcher.GetBlockConsensusInfo(Arg.Any<BlockHeader>())
             .Returns((true, false));
     }
@@ -97,5 +105,10 @@ public class MergeHeaderValidatorTest
     private void GivenConfiguredTerminalBlockHash(Keccak hash)
     {
         _mergeConfig.TerminalBlockHashParsed.Returns(hash);
+    }
+
+    private void GivenBaseValidatorAlwaysPass()
+    {
+        _baseValidator.Validate(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>()).Returns(true);
     }
 }
