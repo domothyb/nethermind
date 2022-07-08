@@ -94,7 +94,7 @@ namespace Nethermind.Merge.Plugin
             _specProvider.UpdateMergeTransitionInfo(_firstPoSBlockNumber, _mergeConfig.TerminalTotalDifficultyParsed);
             LoadFinalTotalDifficulty();
 
-            _hasEverReachedTerminalDifficulty = LoadBooleanFromDb(MetadataDbKeys.HasReachedTerminalBlockFlag) ?? false;
+            _hasEverReachedTerminalDifficulty = _metadataDb.LoadBooleanFromDb(MetadataDbKeys.HasReachedTerminalBlockFlag) ?? false;
 
             if (!_hasEverReachedTerminalDifficulty)
                 _blockTree.NewHeadBlock += CheckIfTerminalBlockReached;
@@ -121,7 +121,7 @@ namespace Nethermind.Merge.Plugin
 
         private void LoadFinalizedBlockHash()
         {
-            _finalizedBlockHash = LoadHashFromDb(MetadataDbKeys.FinalizedBlockHash) ?? Keccak.Zero;
+            _finalizedBlockHash = _metadataDb.LoadHashFromDb(MetadataDbKeys.FinalizedBlockHash) ?? Keccak.Zero;
         }
 
         // Terminal PoW block: A PoW block that satisfies the following conditions pow_block.total_difficulty >= TERMINAL_TOTAL_DIFFICULTY and pow_block.parent_block.total_difficulty < TERMINAL_TOTAL_DIFFICULTY
@@ -299,7 +299,7 @@ namespace Nethermind.Merge.Plugin
 
             _terminalBlockHash = _mergeConfig.TerminalBlockHashParsed != Keccak.Zero
                 ? _mergeConfig.TerminalBlockHashParsed
-                : LoadHashFromDb(MetadataDbKeys.TerminalPoWHash);
+                : _metadataDb.LoadHashFromDb(MetadataDbKeys.TerminalPoWHash);
 
             if (_terminalBlockNumber != null)
                 _firstPoSBlockNumber = _terminalBlockNumber + 1;
@@ -319,44 +319,6 @@ namespace Nethermind.Merge.Plugin
             catch (RlpException)
             {
                 if (_logger.IsWarn) _logger.Warn($"Cannot decode terminal block number");
-            }
-
-            return null;
-        }
-
-        private Keccak? LoadHashFromDb(int key)
-        {
-            try
-            {
-                if (_metadataDb.KeyExists(key))
-                {
-                    byte[]? hashFromDb = _metadataDb.Get(key);
-                    RlpStream stream = new(hashFromDb!);
-                    return stream.DecodeKeccak();
-                }
-            }
-            catch (RlpException)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Cannot decode hash with metadata key: {key}");
-            }
-
-            return null;
-        }
-
-        private bool? LoadBooleanFromDb(int key)
-        {
-            try
-            {
-                if (_metadataDb.KeyExists(key))
-                {
-                    byte[]? hashFromDb = _metadataDb.Get(key);
-                    RlpStream stream = new(hashFromDb!);
-                    return stream.DecodeBool();
-                }
-            }
-            catch (RlpException)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Cannot decode hash with metadata key: {key}");
             }
 
             return null;
